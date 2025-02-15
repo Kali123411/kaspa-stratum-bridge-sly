@@ -6,7 +6,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/kaspanet/kaspad/util"
 	"github.com/mattn/go-colorable"
 	"github.com/onemorebsmith/kaspastratum/src/utils"
 	"github.com/pkg/errors"
@@ -39,7 +38,7 @@ func DefaultConfig(logger *zap.Logger) StratumListenerConfig {
 	return StratumListenerConfig{
 		StateGenerator: func() any { return nil },
 		HandlerMap:     DefaultHandlers(),
-		Port:           ":5544",
+		Port:           ":5544", // Slyvex Stratum Port (adjust if needed)
 		Logger:         logger,
 	}
 }
@@ -101,7 +100,7 @@ func HandleSubscribe(ctx *StratumContext, event JsonRpcEvent) error {
 			[]any{nil, ctx.Extranonce, 8 - (len(ctx.Extranonce) / 2)}, nil))
 	} else {
 		err = ctx.Reply(NewResponse(event,
-			[]any{true, "EthereumStratum/1.0.0"}, nil))
+			[]any{true, "SlyvexStratum/1.0.0"}, nil))
 	}
 	if err != nil {
 		return errors.Wrap(err, "failed to send response to subscribe")
@@ -135,25 +134,23 @@ func SendExtranonce(ctx *StratumContext) {
 		err = ctx.Send(NewEvent("", "set_extranonce", []any{ctx.Extranonce}))
 	}
 	if err != nil {
-		// should we doing anything further on failure
+		// should we do anything further on failure?
 		ctx.Logger.Error(errors.Wrap(err, "failed to set extranonce").Error(), zap.Any("context", ctx))
 	}
 }
 
+// Updated Wallet Regex for Slyvex
 var walletRegex = regexp.MustCompile("slyvex:[a-z0-9]+")
 
 func CleanWallet(in string) (string, error) {
-	_, err := util.DecodeAddress(in, util.Bech32PrefixKaspa)
-	if err == nil {
-		return in, nil // good to go
-	}
+	// Ensure address starts with "slyvex:"
 	if !strings.HasPrefix(in, "slyvex:") {
 		return CleanWallet("slyvex:" + in)
 	}
 
-	// has kaspa: prefix but other weirdness somewhere
+	// Validate format
 	if walletRegex.MatchString(in) {
 		return in[0:67], nil
 	}
-	return "", errors.New("unable to coerce wallet to valid kaspa address")
+	return "", errors.New("unable to coerce wallet to valid slyvex address")
 }
