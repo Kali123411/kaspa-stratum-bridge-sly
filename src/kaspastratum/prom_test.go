@@ -1,15 +1,15 @@
-package kaspastratum
+package slyvexstratum
 
 import (
 	"testing"
 
-	"github.com/kaspanet/kaspad/app/appmessage"
-	"github.com/onemorebsmith/kaspastratum/src/gostratum"
+	"github.com/slyvexnetwork/slyvexd/app/appmessage"
+	"github.com/onemorebsmith/slyvexstratum/src/gostratum"
 )
 
 func TestPromValid(t *testing.T) {
-	// mismatched prom labels throw a panic, sanity check that everything
-	// is valid to write to here
+	// Mismatched Prometheus labels throw a panic, sanity check that everything
+	// is valid to write to here.
 	ctx := gostratum.StratumContext{}
 
 	RecordShareFound(&ctx, 1000.1001)
