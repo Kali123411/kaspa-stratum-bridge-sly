@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/onemorebsmith/slyvexstratum/src/gostratum"
+	"github.com/Kali123411/kaspa-stratum-bridge-sly/src/gostratum"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
