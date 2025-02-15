@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/google/go-cmp v0.5.8
 	github.com/google/uuid v1.3.0
-	github.com/slyvex-core/slyvexd v1.0.0 // ✅ Correct Slyvex version
+	github.com/slyvex-core/slyvexd-v1.0.0 // ✅ Correct Slyvex version
 	github.com/mattn/go-colorable v0.1.13
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.13.0
