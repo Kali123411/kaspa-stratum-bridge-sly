@@ -5,7 +5,7 @@ go 1.18
 require (
 	github.com/google/go-cmp v0.5.8
 	github.com/google/uuid v1.3.0
-	github.com/slyvex-core/slyvexd // ✅ Correct Slyvex version
+	github.com/slyvex-core/slyvexd v1.0.0 // ✅ Correct Slyvex version
 	github.com/mattn/go-colorable v0.1.13
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.13.0
@@ -13,8 +13,9 @@ require (
 	go.uber.org/zap v1.23.0
 	golang.org/x/crypto v0.11.0
 	gopkg.in/yaml.v2 v2.4.0
-	
-	// Indirect dependencies
+)
+
+require (
 	github.com/beorn7/perks v1.0.1 // indirect
 	github.com/cespare/xxhash/v2 v2.1.2 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
