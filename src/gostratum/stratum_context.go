@@ -23,9 +23,9 @@ type StratumContext struct {
 	Id            int32
 	Logger        *zap.Logger
 	connection    net.Conn
-	disconnecting bool
+	disconnecting uint32 // Use atomic flag for safe updates
 	onDisconnect  chan *StratumContext
-	State         any // gross, but go generics aren't mature enough this can be typed 😭
+	State         any
 	writeLock     int32
 	Extranonce    string
 }
@@ -41,7 +41,7 @@ type ContextSummary struct {
 var ErrorDisconnected = fmt.Errorf("disconnecting")
 
 func (sc *StratumContext) Connected() bool {
-	return !sc.disconnecting
+	return atomic.LoadUint32(&sc.disconnecting) == 0
 }
 
 func (sc *StratumContext) Summary() ContextSummary {
@@ -75,7 +75,7 @@ func (sc *StratumContext) String() string {
 }
 
 func (sc *StratumContext) Reply(response JsonRpcResponse) error {
-	if sc.disconnecting {
+	if atomic.LoadUint32(&sc.disconnecting) == 1 {
 		return ErrorDisconnected
 	}
 	encoded, err := json.Marshal(response)
@@ -87,7 +87,7 @@ func (sc *StratumContext) Reply(response JsonRpcResponse) error {
 }
 
 func (sc *StratumContext) Send(event JsonRpcEvent) error {
-	if sc.disconnecting {
+	if atomic.LoadUint32(&sc.disconnecting) == 1 {
 		return ErrorDisconnected
 	}
 	encoded, err := json.Marshal(event)
@@ -115,21 +115,19 @@ func (sc *StratumContext) write(data []byte) error {
 }
 
 func (sc *StratumContext) writeWithBackoff(data []byte) error {
+	delay := 5 * time.Millisecond
 	for i := 0; i < 3; i++ {
 		err := sc.write(data)
 		if err == nil {
 			return nil
 		} else if err == errWriteBlocked {
-			time.Sleep(5 * time.Millisecond)
+			time.Sleep(delay)
+			delay *= 2 // Exponential backoff
 			continue
 		} else {
 			return err
 		}
 	}
-	// this should virtually never happen on a 'healthy' connection. Writes
-	// to the socket are actually just writing to the outgoing buffer for the
-	// connection in the OS, if this blocks it's because the receiver has not
-	// read from the buffer for such a length of time that the tx buffer is full
 	return fmt.Errorf("failed writing to socket after 3 attempts")
 }
 
@@ -165,19 +163,21 @@ func (sc *StratumContext) ReplyLowDiffShare(id any) error {
 }
 
 func (sc *StratumContext) Disconnect() {
-	if !sc.disconnecting {
+	if atomic.CompareAndSwapUint32(&sc.disconnecting, 0, 1) {
 		sc.Logger.Info("disconnecting")
-		sc.disconnecting = true
 		if sc.connection != nil {
 			sc.connection.Close()
 		}
-		sc.onDisconnect <- sc
+		if sc.onDisconnect != nil { // Prevent nil-channel panic
+			sc.onDisconnect <- sc
+		}
 	}
 }
 
 func (sc *StratumContext) checkDisconnect(err error) {
-	if err != nil { // actual error
-		go sc.Disconnect() // potentially blocking, so async it
+	if err != nil {
+		sc.Logger.Error("connection error, disconnecting", zap.Error(err))
+		go sc.Disconnect()
 	}
 }
 
