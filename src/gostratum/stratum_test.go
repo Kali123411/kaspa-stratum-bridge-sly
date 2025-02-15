@@ -3,6 +3,7 @@ package gostratum
 import (
 	"context"
 	"encoding/json"
+	"sync"
 	"testing"
 	"time"
 
@@ -12,6 +13,7 @@ import (
 	"go.uber.org/zap/zapcore"
 )
 
+// Creates a logger for testing
 func testLogger() *zap.Logger {
 	cfg := zap.NewDevelopmentEncoderConfig()
 	cfg.EncodeLevel = zapcore.CapitalColorLevelEncoder
@@ -22,32 +24,45 @@ func testLogger() *zap.Logger {
 	))
 }
 
+// Ensures the listener runs and shuts down correctly
 func TestAcceptContextLifetime(t *testing.T) {
 	logger := testLogger()
-
 	listener := NewListener(DefaultConfig(logger))
-	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
-	listener.Listen(ctx)
+
+	done := make(chan struct{})
+	go func() {
+		listener.Listen(ctx)
+		close(done)
+	}()
+
+	<-done // Ensure proper shutdown
 }
 
+// Tests a new client connection and authorization
 func TestNewClient(t *testing.T) {
 	logger := testLogger()
 	listener := NewListener(DefaultConfig(logger))
 
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second*5)
 	defer cancel()
+
 	mc := NewMockConnection()
 	listener.newClient(ctx, mc)
-	// send in the authorize event
-	event, _ := json.Marshal(NewEvent("1", "mining.authorize", []any{
-		"", "test",
-	}))
+
+	// Send the mining authorization event
+	event, _ := json.Marshal(NewEvent("1", "mining.authorize", []any{"", "test"}))
 	mc.AsyncWriteTestDataToReadBuffer(string(event))
 
+	// Wait for response
+	var wg sync.WaitGroup
+	wg.Add(1)
+
 	responseReceived := false
-	mc.ReadTestDataFromBuffer(func(b []byte) {
+	mc.AsyncReadTestDataFromBuffer(func(b []byte) {
+		defer wg.Done()
 		expected := JsonRpcResponse{
 			Id:     "1",
 			Error:  nil,
@@ -60,15 +75,16 @@ func TestNewClient(t *testing.T) {
 		if d := cmp.Diff(&expected, &decoded); d != "" {
 			t.Fatalf("response incorrect: %s", d)
 		}
-		// done
 		responseReceived = true
 	})
 
+	wg.Wait() // Wait for response
 	if !responseReceived {
 		t.Fatalf("failed to properly respond to authorize")
 	}
 }
 
+// Tests wallet validation for Slyvex
 func TestWalletValidation(t *testing.T) {
 	tests := []struct {
 		in        string
@@ -76,16 +92,16 @@ func TestWalletValidation(t *testing.T) {
 		shouldErr bool
 	}{
 		{
-			in:       "kaspa:qqayxgcjfh6d7uxpj4w3qzjvx73vdehfx22fl6cacmn44rpj5geg2rxyuhga4,Rig_3784816",
-			expected: "kaspa:qqayxgcjfh6d7uxpj4w3qzjvx73vdehfx22fl6cacmn44rpj5geg2rxyuhga4",
+			in:       "slyvex:qqayxgcjfh6d7uxpj4w3qzjvx73vdehfx22fl6cacmn44rpj5geg2rxyuhga4,Rig_3784816",
+			expected: "slyvex:qqayxgcjfh6d7uxpj4w3qzjvx73vdehfx22fl6cacmn44rpj5geg2rxyuhga4",
 		},
 		{
-			in:       "kaspa:qqkrl0er5ka5snd55gr9rcf6rlpx8nln8gf3jxf83w4dc0khfqmauy6qs83zm,Rig_3784816",
-			expected: "kaspa:qqkrl0er5ka5snd55gr9rcf6rlpx8nln8gf3jxf83w4dc0khfqmauy6qs83zm",
+			in:       "slyvex:qqkrl0er5ka5snd55gr9rcf6rlpx8nln8gf3jxf83w4dc0khfqmauy6qs83zm,Rig_3784816",
+			expected: "slyvex:qqkrl0er5ka5snd55gr9rcf6rlpx8nln8gf3jxf83w4dc0khfqmauy6qs83zm",
 		},
 		{
 			in:       "qqkrl0er5ka5snd55gr9rcf6rlpx8nln8gf3jxf83w4dc0khfqmauy6qs83zm,Rig_3784816",
-			expected: "kaspa:qqkrl0er5ka5snd55gr9rcf6rlpx8nln8gf3jxf83w4dc0khfqmauy6qs83zm",
+			expected: "slyvex:qqkrl0er5ka5snd55gr9rcf6rlpx8nln8gf3jxf83w4dc0khfqmauy6qs83zm",
 		},
 	}
 
