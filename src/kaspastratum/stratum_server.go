@@ -1,4 +1,4 @@
-package kaspastratum
+package slyvexstratum
 
 import (
 	"context"
@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/mattn/go-colorable"
-	"github.com/onemorebsmith/kaspastratum/src/gostratum"
-	"github.com/onemorebsmith/kaspastratum/src/utils"
+	"github.com/onemorebsmith/slyvexstratum/src/gostratum"
+	"github.com/onemorebsmith/slyvexstratum/src/utils"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
 )
@@ -20,7 +20,7 @@ const minBlockWaitTime = 3 * time.Second
 
 type BridgeConfig struct {
 	StratumPort     string        `yaml:"stratum_port"`
-	RPCServer       string        `yaml:"kaspad_address"`
+	RPCServer       string        `yaml:"slyvexd_address"`
 	PromPort        string        `yaml:"prom_port"`
 	PrintStats      bool          `yaml:"print_stats"`
 	UseLogFile      bool          `yaml:"log_to_file"`
@@ -43,11 +43,9 @@ func configureZap(cfg BridgeConfig) (*zap.SugaredLogger, func()) {
 	bws := &utils.BufferedWriteSyncer{WS: zapcore.AddSync(colorable.NewColorableStdout()), FlushInterval: 5 * time.Second}
 
 	if !cfg.UseLogFile {
-		return zap.New(zapcore.NewCore(consoleEncoder,
-			bws, zap.InfoLevel)).Sugar(), func() { bws.Stop() }
+		return zap.New(zapcore.NewCore(consoleEncoder, bws, zap.InfoLevel)).Sugar(), func() { bws.Stop() }
 	}
 
-	// log file fun
 	logFile, err := os.OpenFile("bridge.log", os.O_CREATE|os.O_TRUNC|os.O_RDWR, 0666)
 	if err != nil {
 		panic(err)
@@ -72,7 +70,7 @@ func ListenAndServe(cfg BridgeConfig) error {
 	if blockWaitTime == 0 {
 		blockWaitTime = minBlockWaitTime
 	}
-	ksApi, err := NewKaspaAPI(cfg.RPCServer, blockWaitTime, logger)
+	slyvexAPI, err := NewSlyvexAPI(cfg.RPCServer, blockWaitTime, logger)
 	if err != nil {
 		return err
 	}
@@ -85,7 +83,7 @@ func ListenAndServe(cfg BridgeConfig) error {
 		go http.ListenAndServe(cfg.HealthCheckPort, nil)
 	}
 
-	shareHandler := newShareHandler(ksApi.kaspad)
+	shareHandler := newShareHandler(slyvexAPI.slyvexd)
 	minDiff := float64(cfg.MinShareDiff)
 	if minDiff == 0 {
 		minDiff = 4
@@ -99,7 +97,8 @@ func ListenAndServe(cfg BridgeConfig) error {
 	}
 	clientHandler := newClientListener(logger, shareHandler, minDiff, int8(extranonceSize))
 	handlers := gostratum.DefaultHandlers()
-	// override the submit handler with an actual useful handler
+
+	// Override the submit handler with an actual useful handler
 	handlers[string(gostratum.StratumMethodSubmit)] =
 		func(ctx *gostratum.StratumContext, event gostratum.JsonRpcEvent) error {
 			if err := shareHandler.HandleSubmit(ctx, event); err != nil {
@@ -118,8 +117,8 @@ func ListenAndServe(cfg BridgeConfig) error {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	ksApi.Start(ctx, func() {
-		clientHandler.NewBlockAvailable(ksApi)
+	slyvexAPI.Start(ctx, func() {
+		clientHandler.NewBlockAvailable(slyvexAPI)
 	})
 
 	if cfg.VarDiff {
