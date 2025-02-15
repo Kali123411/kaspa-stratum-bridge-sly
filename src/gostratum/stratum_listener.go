@@ -6,6 +6,7 @@ import (
 	"net"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
@@ -36,7 +37,7 @@ type StratumListenerConfig struct {
 
 type StratumListener struct {
 	StratumListenerConfig
-	shuttingDown      bool
+	shuttingDown      int32 // Use atomic flag instead of bool
 	disconnectChannel DisconnectChannel
 	stats             StratumStats
 	workerGroup       sync.WaitGroup
@@ -63,7 +64,7 @@ func NewListener(cfg StratumListenerConfig) *StratumListener {
 }
 
 func (s *StratumListener) Listen(ctx context.Context) error {
-	s.shuttingDown = false
+	atomic.StoreInt32(&s.shuttingDown, 0) // Reset shutdown flag
 
 	serverContext, cancel := context.WithCancel(ctx)
 	defer cancel()
@@ -75,12 +76,15 @@ func (s *StratumListener) Listen(ctx context.Context) error {
 	}
 	defer server.Close()
 
+	s.workerGroup.Add(2) // Ensure both listeners are accounted for
 	go s.disconnectListener(serverContext)
 	go s.tcpListener(serverContext, server)
 
-	// block here until the context is killed
-	<-ctx.Done() // context cancelled, so kill the server
-	s.shuttingDown = true
+	// Wait until the context is cancelled
+	<-ctx.Done()
+
+	// Graceful shutdown
+	atomic.StoreInt32(&s.shuttingDown, 1)
 	server.Close()
 	s.workerGroup.Wait()
 	return context.Canceled
@@ -91,8 +95,9 @@ func (s *StratumListener) newClient(ctx context.Context, connection net.Conn) {
 	port := connection.RemoteAddr().(*net.TCPAddr).Port
 	parts := strings.Split(addr, ":")
 	if len(parts) > 0 {
-		addr = parts[0] // trim off the port
+		addr = parts[0] // Trim off the port
 	}
+
 	clientContext := &StratumContext{
 		parentContext: ctx,
 		RemoteAddr:    addr,
@@ -105,32 +110,33 @@ func (s *StratumListener) newClient(ctx context.Context, connection net.Conn) {
 
 	s.Logger.Info(fmt.Sprintf("new client connecting - %s", addr))
 
-	if s.ClientListener != nil { // TODO: should this be before we spawn the handler?
+	if s.ClientListener != nil {
 		s.ClientListener.OnConnect(clientContext)
 	}
 
 	go spawnClientListener(clientContext, connection, s)
-
 }
 
 func (s *StratumListener) HandleEvent(ctx *StratumContext, event JsonRpcEvent) error {
 	if handler, exists := s.HandlerMap[string(event.Method)]; exists {
 		return handler(ctx, event)
 	}
-	//s.Logger.Warn(fmt.Sprintf("unhandled event '%+v'", event))
 	return nil
 }
 
 func (s *StratumListener) disconnectListener(ctx context.Context) {
-	s.workerGroup.Add(1)
 	defer s.workerGroup.Done()
+
 	for {
 		select {
 		case <-ctx.Done():
 			return
-		case client := <-s.disconnectChannel:
+		case client, ok := <-s.disconnectChannel:
+			if !ok {
+				return // Channel closed
+			}
 			s.Logger.Info(fmt.Sprintf("client disconnecting - %s", client.RemoteAddr))
-			s.stats.Disconnects++
+			atomic.AddInt64(&s.stats.Disconnects, 1)
 			if s.ClientListener != nil {
 				s.ClientListener.OnDisconnect(client)
 			}
@@ -139,13 +145,13 @@ func (s *StratumListener) disconnectListener(ctx context.Context) {
 }
 
 func (s *StratumListener) tcpListener(ctx context.Context, server net.Listener) {
-	s.workerGroup.Add(1)
 	defer s.workerGroup.Done()
-	for { // listen and spin forever
+
+	for {
 		connection, err := server.Accept()
 		if err != nil {
-			if s.shuttingDown {
-				s.Logger.Error("stopping listening due to server shutdown")
+			if atomic.LoadInt32(&s.shuttingDown) == 1 {
+				s.Logger.Info("server shutting down, stopping listener")
 				return
 			}
 			s.Logger.Error("failed to accept incoming connection", zap.Error(err))
