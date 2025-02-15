@@ -5,8 +5,13 @@ import (
 	"net/http"
 	"sync"
 
+<<<<<<< HEAD
 	"github.com/slyvexnetwork/slyvexd/app/appmessage"
 	"github.com/onemorebsmith/slyvexstratum/src/gostratum"
+=======
+	"github.com/kaspanet/kaspad/app/appmessage"
+	"github.com/Kali123411/kaspa-stratum-bridge-sly/src/gostratum"
+>>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"github.com/prometheus/client_golang/prometheus/promhttp"

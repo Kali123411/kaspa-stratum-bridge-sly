@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/mattn/go-colorable"
-	"github.com/onemorebsmith/kaspastratum/src/utils"
+	"github.com/Kali123411/kaspa-stratum-bridge-sly/src/utils"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"

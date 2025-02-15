@@ -3,8 +3,13 @@ package slyvexstratum
 import (
 	"testing"
 
+<<<<<<< HEAD
 	"github.com/slyvexnetwork/slyvexd/app/appmessage"
 	"github.com/onemorebsmith/slyvexstratum/src/gostratum"
+=======
+	"github.com/kaspanet/kaspad/app/appmessage"
+	"github.com/Kali123411/kaspa-stratum-bridge-sly/src/gostratum"
+>>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 )
 
 func TestPromValid(t *testing.T) {

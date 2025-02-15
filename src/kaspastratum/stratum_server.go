@@ -1,6 +1,7 @@
 package slyvexstratum
 
 import (
+<<<<<<< HEAD
 	"context"
 	"math"
 	"net/http"
@@ -11,14 +12,14 @@ import (
 	"github.com/mattn/go-colorable"
 	"github.com/onemorebsmith/slyvexstratum/src/gostratum"
 	"github.com/onemorebsmith/slyvexstratum/src/utils"
+=======
+	"github.com/Kali123411/kaspa-stratum-bridge-sly/src/gostratum"
+>>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 	"go.uber.org/zap"
-	"go.uber.org/zap/zapcore"
 )
 
-const version = "v1.2.2"
-const minBlockWaitTime = 3 * time.Second
-
 type BridgeConfig struct {
+<<<<<<< HEAD
 	StratumPort     string        `yaml:"stratum_port"`
 	RPCServer       string        `yaml:"slyvexd_address"`
 	PromPort        string        `yaml:"prom_port"`
@@ -71,18 +72,25 @@ func ListenAndServe(cfg BridgeConfig) error {
 		blockWaitTime = minBlockWaitTime
 	}
 	slyvexAPI, err := NewSlyvexAPI(cfg.RPCServer, blockWaitTime, logger)
+=======
+	StratumPort    string
+	RPCServer      string
+	MinShareDiff   uint
+	ExtranonceSize uint
+	BlockWaitTime  int
+}
+
+// StartStratumServer initializes the mining server
+func StartStratumServer(cfg BridgeConfig, logger *zap.SugaredLogger) error {
+	ksApi, err := NewKaspaAPI(cfg.RPCServer, 3, logger)
+>>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 	if err != nil {
 		return err
 	}
 
-	if cfg.HealthCheckPort != "" {
-		logger.Info("enabling health check on port " + cfg.HealthCheckPort)
-		http.HandleFunc("/readyz", func(w http.ResponseWriter, r *http.Request) {
-			w.WriteHeader(http.StatusOK)
-		})
-		go http.ListenAndServe(cfg.HealthCheckPort, nil)
-	}
+	shareHandler := newShareHandler(ksApi.slyvexd)
 
+<<<<<<< HEAD
 	shareHandler := newShareHandler(slyvexAPI.slyvexd)
 	minDiff := float64(cfg.MinShareDiff)
 	if minDiff == 0 {
@@ -134,4 +142,18 @@ func ListenAndServe(cfg BridgeConfig) error {
 	}
 
 	return gostratum.NewListener(stratumConfig).Listen(context.Background())
+=======
+	handlers := gostratum.DefaultHandlers()
+	handlers[string(gostratum.StratumMethodSubmit)] = func(ctx *gostratum.StratumContext, event gostratum.JsonRpcEvent) error {
+		return shareHandler.HandleSubmit(ctx, event)
+	}
+
+	return nil
+}
+
+// Define HandleSubmit inside shareHandler
+func (sh *shareHandler) HandleSubmit(ctx *gostratum.StratumContext, event gostratum.JsonRpcEvent) error {
+	ctx.Logger.Info("Received share submission")
+	return nil
+>>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 }

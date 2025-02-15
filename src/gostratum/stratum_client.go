@@ -2,7 +2,7 @@ package gostratum
 
 import (
 	"bufio"
-	"bytes"
+	// "bytes" //
 	"io"
 	"net"
 	"os"
@@ -74,7 +74,7 @@ func readFromConnection(connection net.Conn, cb LineCallback) error {
 		// Read until newline
 		line, err := reader.ReadString('\n')
 		if err != nil {
-			if errors.Is(err, net.ErrDeadlineExceeded) {
+			if errors.Is(err, os.ErrDeadlineExceeded) { // Fix for Go 1.18 compatibility
 				return err // Handle timeout gracefully
 			}
 			if errors.Is(err, io.EOF) {

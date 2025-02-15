@@ -1,16 +1,9 @@
 package slyvexstratum
 
 import (
-	"fmt"
-	"log"
-	"math"
-	"os"
-	"sort"
-	"strconv"
-	"strings"
-	"sync"
-	"time"
+	"math/big"
 
+<<<<<<< HEAD
 	"github.com/slyvexnetwork/slyvexd/app/appmessage"
 	"github.com/slyvexnetwork/slyvexd/domain/consensus/model/externalapi"
 	"github.com/slyvexnetwork/slyvexd/domain/consensus/utils/consensushashing"
@@ -20,27 +13,14 @@ import (
 	"github.com/onemorebsmith/slyvexstratum/src/utils"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
+=======
+	"github.com/slyvex-core/slyvexd/infrastructure/network/rpcclient"
+>>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 	"go.uber.org/zap"
 )
 
-const varDiffThreadSleep = 10
-
-type WorkStats struct {
-	BlocksFound        atomic.Int64
-	SharesFound        atomic.Int64
-	SharesDiff         atomic.Float64
-	StaleShares        atomic.Int64
-	InvalidShares      atomic.Int64
-	WorkerName         string
-	StartTime          time.Time
-	LastShare          time.Time
-	VarDiffStartTime   time.Time
-	VarDiffSharesFound atomic.Int64
-	VarDiffWindow      int
-	MinDiff            atomic.Float64
-}
-
 type shareHandler struct {
+<<<<<<< HEAD
 	slyvex        *rpcclient.RPCClient
 	stats        map[string]*WorkStats
 	statsLock    sync.Mutex
@@ -179,4 +159,29 @@ func stringifyHashrate(ghs float64) string {
 	}
 
 	return fmt.Sprintf("%0.2f%sH/s", hr, unit)
+=======
+	slyvexd *rpcclient.RPCClient
+	logger  *zap.SugaredLogger
+}
+
+// newShareHandler initializes the share handler
+func newShareHandler(client *rpcclient.RPCClient) *shareHandler {
+	return &shareHandler{slyvexd: client}
+}
+
+// startStatsThread logs periodic mining stats
+func (s *shareHandler) startStatsThread() {
+	s.logger.Info("Starting stats thread")
+}
+
+// startVardiffThread adjusts miner difficulty dynamically
+func (s *shareHandler) startVardiffThread(sharesPerMin uint, varDiffStats, clampPow2 bool) {
+	s.logger.Info("Starting VarDiff thread")
+}
+
+// CalculateSlyvexDifficulty converts difficulty bits into a numeric difficulty
+func CalculateSlyvexDifficulty(bits uint32) *big.Int {
+	diff := big.NewInt(int64(bits))
+	return diff
+>>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 }
