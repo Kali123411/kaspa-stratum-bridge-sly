@@ -1,62 +1,62 @@
-package kaspastratum
+package slyvexstratum
 
 import (
 	"context"
 	"fmt"
 	"time"
 
-	"github.com/kaspanet/slyvexd/app/appmessage"
-	"github.com/kaspanet/slyvexd/infrastructure/network/rpcclient"
-	"github.com/onemorebsmith/kaspastratum/src/gostratum"
+	"github.com/slyvexnetwork/slyvexd/app/appmessage"
+	"github.com/slyvexnetwork/slyvexd/infrastructure/network/rpcclient"
+	"github.com/onemorebsmith/slyvexstratum/src/gostratum"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
 
-type KaspaApi struct {
+type SlyvexApi struct {
 	address       string
 	blockWaitTime time.Duration
 	logger        *zap.SugaredLogger
-	slyvexd        *rpcclient.RPCClient
+	slyvexd       *rpcclient.RPCClient
 	connected     bool
 }
 
-func NewKaspaAPI(address string, blockWaitTime time.Duration, logger *zap.SugaredLogger) (*KaspaApi, error) {
+func NewSlyvexAPI(address string, blockWaitTime time.Duration, logger *zap.SugaredLogger) (*SlyvexApi, error) {
 	client, err := rpcclient.NewRPCClient(address)
 	if err != nil {
 		return nil, err
 	}
 
-	return &KaspaApi{
+	return &SlyvexApi{
 		address:       address,
 		blockWaitTime: blockWaitTime,
-		logger:        logger.With(zap.String("component", "kaspaapi:"+address)),
-		slyvexd:        client,
+		logger:        logger.With(zap.String("component", "slyvexapi:"+address)),
+		slyvexd:       client,
 		connected:     true,
 	}, nil
 }
 
-func (ks *KaspaApi) Start(ctx context.Context, blockCb func()) {
-	ks.waitForSync(true)
-	go ks.startBlockTemplateListener(ctx, blockCb)
-	go ks.startStatsThread(ctx)
+func (sv *SlyvexApi) Start(ctx context.Context, blockCb func()) {
+	sv.waitForSync(true)
+	go sv.startBlockTemplateListener(ctx, blockCb)
+	go sv.startStatsThread(ctx)
 }
 
-func (ks *KaspaApi) startStatsThread(ctx context.Context) {
+func (sv *SlyvexApi) startStatsThread(ctx context.Context) {
 	ticker := time.NewTicker(30 * time.Second)
 	for {
 		select {
 		case <-ctx.Done():
-			ks.logger.Warn("context cancelled, stopping stats thread")
+			sv.logger.Warn("context cancelled, stopping stats thread")
 			return
 		case <-ticker.C:
-			dagResponse, err := ks.slyvexd.GetBlockDAGInfo()
+			dagResponse, err := sv.slyvexd.GetBlockDAGInfo()
 			if err != nil {
-				ks.logger.Warn("failed to get network hashrate from kaspa, prom stats will be out of date", zap.Error(err))
+				sv.logger.Warn("failed to get network hashrate from slyvex, prom stats will be out of date", zap.Error(err))
 				continue
 			}
-			response, err := ks.slyvexd.EstimateNetworkHashesPerSecond(dagResponse.TipHashes[0], 1000)
+			response, err := sv.slyvexd.EstimateNetworkHashesPerSecond(dagResponse.TipHashes[0], 1000)
 			if err != nil {
-				ks.logger.Warn("failed to get network hashrate from kaspa, prom stats will be out of date", zap.Error(err))
+				sv.logger.Warn("failed to get network hashrate from slyvex, prom stats will be out of date", zap.Error(err))
 				continue
 			}
 			RecordNetworkStats(response.NetworkHashesPerSecond, dagResponse.BlockCount, dagResponse.Difficulty)
@@ -64,20 +64,20 @@ func (ks *KaspaApi) startStatsThread(ctx context.Context) {
 	}
 }
 
-func (ks *KaspaApi) reconnect() error {
-	if ks.slyvexd != nil {
-		return ks.slyvexd.Reconnect()
+func (sv *SlyvexApi) reconnect() error {
+	if sv.slyvexd != nil {
+		return sv.slyvexd.Reconnect()
 	}
 
-	client, err := rpcclient.NewRPCClient(ks.address)
+	client, err := rpcclient.NewRPCClient(sv.address)
 	if err != nil {
 		return err
 	}
-	ks.slyvexd = client
+	sv.slyvexd = client
 	return nil
 }
 
-func (s *KaspaApi) waitForSync(verbose bool) error {
+func (s *SlyvexApi) waitForSync(verbose bool) error {
 	if verbose {
 		s.logger.Info("checking slyvexd sync state")
 	}
@@ -89,7 +89,7 @@ func (s *KaspaApi) waitForSync(verbose bool) error {
 		if clientInfo.IsSynced {
 			break
 		}
-		s.logger.Warn("Kaspa is not synced, waiting for sync before starting bridge")
+		s.logger.Warn("Slyvex is not synced, waiting for sync before starting bridge")
 		time.Sleep(5 * time.Second)
 	}
 	if verbose {
@@ -98,7 +98,7 @@ func (s *KaspaApi) waitForSync(verbose bool) error {
 	return nil
 }
 
-func (s *KaspaApi) startBlockTemplateListener(ctx context.Context, blockReadyCb func()) {
+func (s *SlyvexApi) startBlockTemplateListener(ctx context.Context, blockReadyCb func()) {
 	var blockReadyChan chan bool
 	restartChannel := true
 	ticker := time.NewTicker(s.blockWaitTime)
@@ -117,7 +117,7 @@ func (s *KaspaApi) startBlockTemplateListener(ctx context.Context, blockReadyCb 
 				blockReadyChan <- true
 			})
 			if err != nil {
-				s.logger.Error("fatal: failed to register for block notifications from kaspa")
+				s.logger.Error("fatal: failed to register for block notifications from slyvex")
 			} else {
 				restartChannel = false
 			}
@@ -135,12 +135,12 @@ func (s *KaspaApi) startBlockTemplateListener(ctx context.Context, blockReadyCb 
 	}
 }
 
-func (ks *KaspaApi) GetBlockTemplate(
+func (sv *SlyvexApi) GetBlockTemplate(
 	client *gostratum.StratumContext) (*appmessage.GetBlockTemplateResponseMessage, error) {
-	template, err := ks.slyvexd.GetBlockTemplate(client.WalletAddr,
-		fmt.Sprintf(`'%s' via onemorebsmith/kaspa-stratum-bridge_%s`, client.RemoteApp, version))
+	template, err := sv.slyvexd.GetBlockTemplate(client.WalletAddr,
+		fmt.Sprintf(`'%s' via onemorebsmith/slyvex-stratum-bridge_%s`, client.RemoteApp, version))
 	if err != nil {
-		return nil, errors.Wrap(err, "failed fetching new block template from kaspa")
+		return nil, errors.Wrap(err, "failed fetching new block template from slyvex")
 	}
 	return template, nil
 }
