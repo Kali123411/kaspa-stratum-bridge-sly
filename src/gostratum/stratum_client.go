@@ -33,7 +33,7 @@ func spawnClientListener(ctx *StratumContext, connection net.Conn, s *StratumLis
 		})
 
 		// Handle timeout error correctly
-		if errors.Is(err, net.ErrDeadlineExceeded) {
+		if errors.Is(err, os.ErrDeadlineExceeded) {
 			continue // Expected timeout, retry read loop
 		}
 
