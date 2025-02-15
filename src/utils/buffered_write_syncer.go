@@ -12,130 +12,96 @@ import (
 )
 
 const (
-	// _defaultBufferSize specifies the default size used by Buffer.
-	_defaultBufferSize = 256 * 1024 // 256 kB
+	// Default buffer size for logging (256 kB)
+	_defaultBufferSize = 256 * 1024
 
-	// _defaultFlushInterval specifies the default flush interval for
-	// Buffer.
+	// Default interval for flushing logs
 	_defaultFlushInterval = 30 * time.Second
 )
 
 var ErrWSFlush = errors.New("unable to flush write stream")
 
-// buffers writes in-memory before flushing them to a wrapped WriteSyncer after
-// reaching some limit, or at some fixed interval--whichever comes first.
+// BufferedWriteSyncer buffers logs in memory and periodically flushes them
+// to disk or another write syncer at a defined interval.
 type BufferedWriteSyncer struct {
-	// WS is the WriteSyncer around which BufferedWriteSyncer will buffer
-	// writes.
-	//
-	// This field is required.
-	WS zapcore.WriteSyncer
+	WS            zapcore.WriteSyncer // Wrapped WriteSyncer (disk, console, etc.)
+	Size          int                 // Max buffer size before flushing (defaults to 256 KB)
+	FlushInterval time.Duration       // Auto flush interval (defaults to 30 seconds)
+	Clock         zapcore.Clock       // Custom clock, defaulting to system clock
 
-	// Size specifies the maximum amount of data the writer will buffered
-	// before flushing.
-	//
-	// Defaults to 256 kB if unspecified.
-	Size int
-
-	// FlushInterval specifies how often the writer should flush data if
-	// there have been no writes.
-	//
-	// Defaults to 30 seconds if unspecified.
-	FlushInterval time.Duration
-
-	// Clock, if specified, provides control of the source of time for the
-	// writer.
-	//
-	// Defaults to the system clock.
-	Clock zapcore.Clock
-
-	// unexported fields for state
+	// Internal state
 	mu          sync.Mutex
-	initialized bool // whether initialize() has run
-	stopped     bool // whether Stop() has run
+	initialized bool
+	stopped     bool
 	writer      *bufio.Writer
 	ticker      *time.Ticker
-	stop        chan struct{} // closed when flushLoop should stop
-	done        chan struct{} // closed when flushLoop has stopped
+	stop        chan struct{}
+	done        chan struct{}
 }
 
+// initialize sets up the buffer, ticker, and flush loop.
 func (s *BufferedWriteSyncer) initialize() {
-	size := s.Size
-	if size == 0 {
-		size = _defaultBufferSize
+	if s.Size == 0 {
+		s.Size = _defaultBufferSize
 	}
-
-	flushInterval := s.FlushInterval
-	if flushInterval == 0 {
-		flushInterval = _defaultFlushInterval
+	if s.FlushInterval == 0 {
+		s.FlushInterval = _defaultFlushInterval
 	}
-
 	if s.Clock == nil {
 		s.Clock = zapcore.DefaultClock
 	}
 
-	s.ticker = s.Clock.NewTicker(flushInterval)
-	s.writer = bufio.NewWriterSize(s.WS, size)
+	s.ticker = s.Clock.NewTicker(s.FlushInterval)
+	s.writer = bufio.NewWriterSize(s.WS, s.Size)
 	s.stop = make(chan struct{})
 	s.done = make(chan struct{})
 	s.initialized = true
 	go s.flushLoop()
 }
 
-// Write writes log data into buffer syncer directly, multiple Write calls will
-// be batched, and log data will be flushed to disk when the buffer is full or
-// periodically.
+// Write buffers log data, flushing when full or at set intervals.
 func (s *BufferedWriteSyncer) Write(bs []byte) (int, error) {
-	locked := false
 	tryCount := 0
 	for {
-		locked = s.mu.TryLock()
-		if !locked {
-			if tryCount < 5 {
-				time.Sleep(100 * time.Millisecond)
-				tryCount++
-			} else {
-				// silently dropping log messages if we can't acquire lock
-				return len(bs), nil
-			}
-		} else {
+		if s.mu.TryLock() {
 			break
 		}
+		if tryCount < 5 {
+			time.Sleep(100 * time.Millisecond)
+			tryCount++
+		} else {
+			// Drop log messages if we can't acquire lock
+			return len(bs), nil
+		}
 	}
-
 	defer s.mu.Unlock()
 
 	if !s.initialized {
 		s.initialize()
 	}
 
-	// To avoid partial writes from being flushed, we manually flush the
-	// existing buffer if:
-	// * The current write doesn't fit into the buffer fully, and
-	// * The buffer is not empty (since bufio will not split large writes when the buffer is empty)
+	// Flush buffer if new write won't fit and buffer isn't empty
 	if len(bs) > s.writer.Available() && s.writer.Buffered() > 0 {
-		err := s.Flush()
-		if err != nil {
+		if err := s.Flush(); err != nil {
 			if errors.Is(err, ErrWSFlush) {
-				// silently dropping log messages if we can't flush buffer
+				// Drop log messages if flushing fails
 				return len(bs), nil
-			} else {
-				return 0, err
 			}
+			return 0, err
 		}
 	}
 
 	return s.writer.Write(bs)
 }
 
-// Flush with timeout
+// Flush forces a manual flush of buffered logs with a timeout.
 func (s *BufferedWriteSyncer) Flush() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 500*time.Millisecond)
 	defer cancel()
 
-	c := make(chan error)
+	c := make(chan error, 1)
 
-	go func(ctx context.Context) {
+	go func() {
 		err := s.writer.Flush()
 		select {
 		case <-ctx.Done():
@@ -143,12 +109,12 @@ func (s *BufferedWriteSyncer) Flush() error {
 		default:
 			c <- err
 		}
-	}(ctx)
+	}()
 
 	return <-c
 }
 
-// Sync flushes buffered log data into disk directly.
+// Sync flushes logs and ensures data is written to disk.
 func (s *BufferedWriteSyncer) Sync() error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -157,39 +123,30 @@ func (s *BufferedWriteSyncer) Sync() error {
 	if s.initialized {
 		err = s.Flush()
 	}
-
 	if errors.Is(err, ErrWSFlush) {
-		// unable to flush buffer, fail silently and skip WS sync
 		return nil
-	} else {
-		return multierr.Append(err, s.WS.Sync())
 	}
+	return multierr.Append(err, s.WS.Sync())
 }
 
-// flushLoop flushes the buffer at the configured interval until Stop is
-// called.
+// flushLoop automatically flushes logs at defined intervals.
 func (s *BufferedWriteSyncer) flushLoop() {
 	defer close(s.done)
 
 	for {
 		select {
 		case <-s.ticker.C:
-			// we just simply ignore error here
-			// because the underlying bufio writer stores any errors
-			// and we return any error from Sync() as part of the close
-			_ = s.Sync()
+			_ = s.Sync() // Ignore errors; bufio stores errors internally
 		case <-s.stop:
 			return
 		}
 	}
 }
 
-// Stop closes the buffer, cleans up background goroutines, and flushes
-// remaining unwritten data.
+// Stop safely shuts down buffering, ensuring all logs are written.
 func (s *BufferedWriteSyncer) Stop() (err error) {
-	var stopped bool
+	var alreadyStopped bool
 
-	// Critical section.
 	func() {
 		s.mu.Lock()
 		defer s.mu.Unlock()
@@ -197,20 +154,19 @@ func (s *BufferedWriteSyncer) Stop() (err error) {
 		if !s.initialized {
 			return
 		}
-
-		stopped = s.stopped
-		if stopped {
+		if s.stopped {
+			alreadyStopped = true
 			return
 		}
 		s.stopped = true
 
 		s.ticker.Stop()
-		close(s.stop) // tell flushLoop to stop
-		<-s.done      // and wait until it has
+		close(s.stop) // Stop flush loop
+		<-s.done      // Wait for loop to exit
 	}()
 
-	// Don't call Sync on consecutive Stops.
-	if !stopped {
+	// Ensure we don't double-call Sync()
+	if !alreadyStopped {
 		err = s.Sync()
 	}
 
