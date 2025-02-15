@@ -1,4 +1,4 @@
-package kaspastratum
+package slyvexstratum
 
 import (
 	"fmt"
@@ -9,7 +9,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/onemorebsmith/kaspastratum/src/gostratum"
+	"github.com/onemorebsmith/slyvexstratum/src/gostratum"
 	"github.com/pkg/errors"
 	"go.uber.org/zap"
 )
@@ -67,9 +67,8 @@ func (c *clientListener) OnConnect(ctx *gostratum.StratumContext) {
 		ctx.Extranonce = fmt.Sprintf("%0*x", c.extranonceSize*2, extranonce)
 	}
 	go func() {
-		// hacky, but give time for the authorize to go through so we can use the worker name
-		time.Sleep(5 * time.Second)
-		c.shareHandler.getCreateStats(ctx) // create the stats if they don't exist
+		time.Sleep(5 * time.Second) // Allow time for authorization
+		c.shareHandler.getCreateStats(ctx) // Create miner stats if missing
 	}()
 }
 
@@ -83,7 +82,7 @@ func (c *clientListener) OnDisconnect(ctx *gostratum.StratumContext) {
 	RecordDisconnect(ctx)
 }
 
-func (c *clientListener) NewBlockAvailable(kapi *KaspaApi) {
+func (c *clientListener) NewBlockAvailable(sapi *SlyvexApi) {
 	c.clientLock.Lock()
 	addresses := make([]string, 0, len(c.clients))
 	for _, cl := range c.clients {
@@ -93,28 +92,22 @@ func (c *clientListener) NewBlockAvailable(kapi *KaspaApi) {
 		go func(client *gostratum.StratumContext) {
 			state := GetMiningState(client)
 			if client.WalletAddr == "" {
-				if time.Since(state.connectTime) > time.Second*20 { // timeout passed
-					// this happens pretty frequently in gcp/aws land since script-kiddies scrape ports
-					client.Logger.Warn("client misconfigured, no miner address specified - disconnecting", zap.String("client", client.String()))
+				if time.Since(state.connectTime) > time.Second*20 {
+					client.Logger.Warn("client misconfigured, no miner address specified - disconnecting")
 					RecordWorkerError(client.WalletAddr, ErrNoMinerAddress)
-					client.Disconnect() // invalid configuration, boot the worker
+					client.Disconnect()
 				}
 				return
 			}
-			template, err := kapi.GetBlockTemplate(client)
+			template, err := sapi.GetBlockTemplate(client)
 			if err != nil {
-				if strings.Contains(err.Error(), "Could not decode address") {
-					RecordWorkerError(client.WalletAddr, ErrInvalidAddressFmt)
-					client.Logger.Error(fmt.Sprintf("failed fetching new block template from kaspa, malformed address: %s", err))
-					client.Disconnect() // unrecoverable
-				} else {
-					RecordWorkerError(client.WalletAddr, ErrFailedBlockFetch)
-					client.Logger.Error(fmt.Sprintf("failed fetching new block template from kaspa: %s", err))
-				}
+				client.Logger.Error(fmt.Sprintf("failed fetching new block template from Slyvex: %s", err))
+				client.Disconnect()
 				return
 			}
-			state.bigDiff = CalculateTarget(uint64(template.Block.Header.Bits))
-			header, err := SerializeBlockHeader(template.Block)
+
+			state.bigDiff = CalculateSlyvexDifficulty(template.Block.Header.DifficultyBits)
+			header, err := SerializeSlyvexBlockHeader(template.Block)
 			if err != nil {
 				RecordWorkerError(client.WalletAddr, ErrBadDataFromMiner)
 				client.Logger.Error(fmt.Sprintf("failed to serialize block header: %s", err))
@@ -125,15 +118,13 @@ func (c *clientListener) NewBlockAvailable(kapi *KaspaApi) {
 			if !state.initialized {
 				state.initialized = true
 				state.useBigJob = bigJobRegex.MatchString(client.RemoteApp)
-				// first pass through send config/default difficulty
-				state.stratumDiff = newKaspaDiff()
+				state.stratumDiff = newSlyvexDiff()
 				state.stratumDiff.setDiffValue(c.minShareDiff)
 				sendClientDiff(client, state)
 				c.shareHandler.setClientVardiff(client, c.minShareDiff)
 			} else {
 				varDiff := c.shareHandler.getClientVardiff(client)
 				if varDiff != state.stratumDiff.diffValue && varDiff != 0 {
-					// send updated vardiff
 					client.Logger.Info(fmt.Sprintf("changing diff from %f to %f", state.stratumDiff.diffValue, varDiff))
 					state.stratumDiff.setDiffValue(varDiff)
 					sendClientDiff(client, state)
@@ -143,23 +134,18 @@ func (c *clientListener) NewBlockAvailable(kapi *KaspaApi) {
 
 			jobParams := []any{fmt.Sprintf("%d", jobId)}
 			if state.useBigJob {
-				jobParams = append(jobParams, GenerateLargeJobParams(header, uint64(template.Block.Header.Timestamp)))
+				jobParams = append(jobParams, GenerateLargeSlyvexJobParams(header, template.Block.Header.Timestamp))
 			} else {
-				jobParams = append(jobParams, GenerateJobHeader(header))
+				jobParams = append(jobParams, GenerateSlyvexJobHeader(header))
 				jobParams = append(jobParams, template.Block.Header.Timestamp)
 			}
 
-			// // normal notify flow
 			if err := client.Send(gostratum.JsonRpcEvent{
 				Version: "2.0",
 				Method:  "mining.notify",
 				Id:      jobId,
 				Params:  jobParams,
 			}); err != nil {
-				if errors.Is(err, gostratum.ErrorDisconnected) {
-					RecordWorkerError(client.WalletAddr, ErrDisconnected)
-					return
-				}
 				RecordWorkerError(client.WalletAddr, ErrFailedSendWork)
 				client.Logger.Error(errors.Wrapf(err, "failed sending work packet %d", jobId).Error())
 			}
@@ -172,20 +158,6 @@ func (c *clientListener) NewBlockAvailable(kapi *KaspaApi) {
 		}
 	}
 	c.clientLock.Unlock()
-
-	if time.Since(c.lastBalanceCheck) > balanceDelay {
-		c.lastBalanceCheck = time.Now()
-		if len(addresses) > 0 {
-			go func() {
-				balances, err := kapi.kaspad.GetBalancesByAddresses(addresses)
-				if err != nil {
-					c.logger.Warn("failed to get balances from kaspa, prom stats will be out of date", zap.Error(err))
-					return
-				}
-				RecordBalances(balances)
-			}()
-		}
-	}
 }
 
 func sendClientDiff(client *gostratum.StratumContext, state *MiningState) {
