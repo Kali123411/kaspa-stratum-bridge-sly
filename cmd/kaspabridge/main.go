@@ -2,10 +2,7 @@ package main
 
 import (
 	"flag"
-<<<<<<< HEAD
 	"fmt"
-=======
->>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 	"log"
 	"os"
 	"path"
@@ -16,7 +13,6 @@ func main() {
 	// Get the current working directory
 	pwd, _ := os.Getwd()
 	fullPath := path.Join(pwd, "config.yaml")
-<<<<<<< HEAD
 
 	// Load configuration file
 	log.Printf("Loading config @ `%s`", fullPath)
@@ -68,7 +64,6 @@ func main() {
 	// Start the bridge server
 	if err := kaspastratum.ListenAndServe(cfg); err != nil {
 		log.Fatalf("Bridge server error: %s", err)
-=======
 	log.Printf("Loading config from %s", fullPath)
 
 	flag.Parse()
@@ -83,6 +78,6 @@ func main() {
 
 	if err := kaspastratum.StartStratumServer(cfg, nil); err != nil {
 		log.Fatalf("Error starting stratum server: %v", err)
->>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
+
 	}
 }
