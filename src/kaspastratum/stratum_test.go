@@ -1,4 +1,4 @@
-package kaspastratum
+package slyvexstratum
 
 import (
 	"encoding/json"
@@ -10,8 +10,8 @@ import (
 	"time"
 
 	"github.com/google/go-cmp/cmp"
-	"github.com/kaspanet/kaspad/app/appmessage"
-	"github.com/kaspanet/kaspad/util/difficulty"
+	"github.com/slyvexnetwork/slyvexd/app/appmessage"
+	"github.com/slyvexnetwork/slyvexd/util/difficulty"
 )
 
 func TestHeaderSerialization(t *testing.T) {
@@ -62,7 +62,7 @@ func TestHeaderSerialization(t *testing.T) {
 func TestPoolHzCalculation(t *testing.T) {
 	// TODO: figure out what we really want to test here.
 	// currently set up diff object to mimic old static settings
-	diff := newKaspaDiff()
+	diff := newSlyvexDiff()
 	diff.setDiffValue(4)
 	log.Println(diff.hashValue)
 	log.Println(diff.diffValue)
@@ -77,7 +77,7 @@ func TestPoolHzCalculation(t *testing.T) {
 
 // snooper. Inspect coms between miner and pool
 func TestBridge(t *testing.T) {
-	serverConn, err := net.Dial("tcp", "pool.us.woolypooly.com:3112")
+	serverConn, err := net.Dial("tcp", "pool.slyvexnetwork.com:3112")
 	if err != nil {
 		t.Fatal(err)
 	}
