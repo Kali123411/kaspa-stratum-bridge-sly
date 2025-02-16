@@ -5,15 +5,12 @@ go 1.23
 toolchain go1.23.6
 
 require (
-<<<<<<< HEAD
 	github.com/google/go-cmp v0.5.8
 	github.com/google/uuid v1.3.0
 	github.com/slyvex-core/slyvexd v1.0.0 // ✅ Correct Slyvex version
-=======
 	github.com/google/go-cmp v0.6.0
 	github.com/google/uuid v1.6.0
 	github.com/kaspanet/kaspad v0.12.19
->>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 	github.com/mattn/go-colorable v0.1.13
 	github.com/pkg/errors v0.9.1
 	github.com/prometheus/client_golang v1.13.0

@@ -3,7 +3,6 @@ package slyvexstratum
 import (
 	"math/big"
 
-<<<<<<< HEAD
 	"github.com/slyvexnetwork/slyvexd/app/appmessage"
 	"github.com/slyvexnetwork/slyvexd/domain/consensus/model/externalapi"
 	"github.com/slyvexnetwork/slyvexd/domain/consensus/utils/consensushashing"
@@ -13,14 +12,11 @@ import (
 	"github.com/onemorebsmith/slyvexstratum/src/utils"
 	"github.com/pkg/errors"
 	"go.uber.org/atomic"
-=======
 	"github.com/slyvex-core/slyvexd/infrastructure/network/rpcclient"
->>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 	"go.uber.org/zap"
 )
 
 type shareHandler struct {
-<<<<<<< HEAD
 	slyvex        *rpcclient.RPCClient
 	stats        map[string]*WorkStats
 	statsLock    sync.Mutex
@@ -108,7 +104,6 @@ func (sh *shareHandler) startStatsThread() error {
 	for {
 		time.Sleep(10 * time.Second)
 
-		str := "\n===============================================================================\n"
 		str += "  worker name   |  avg hashrate  |   acc/stl/inv  |    blocks    |    uptime   \n"
 		str += "-------------------------------------------------------------------------------\n"
 		var lines []string
@@ -128,7 +123,6 @@ func (sh *shareHandler) startStatsThread() error {
 		str += "\n-------------------------------------------------------------------------------\n"
 		str += fmt.Sprintf("                | %14.14s | %14.14s | %12d | %11s",
 			rateStr, ratioStr, sh.overall.BlocksFound.Load(), time.Since(start).Round(time.Second))
-		str += "\n========================================================== slyvex_bridge ===\n"
 		log.Println(str)
 	}
 }
@@ -159,7 +153,6 @@ func stringifyHashrate(ghs float64) string {
 	}
 
 	return fmt.Sprintf("%0.2f%sH/s", hr, unit)
-=======
 	slyvexd *rpcclient.RPCClient
 	logger  *zap.SugaredLogger
 }
@@ -183,5 +176,4 @@ func (s *shareHandler) startVardiffThread(sharesPerMin uint, varDiffStats, clamp
 func CalculateSlyvexDifficulty(bits uint32) *big.Int {
 	diff := big.NewInt(int64(bits))
 	return diff
->>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 }

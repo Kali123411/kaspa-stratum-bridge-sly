@@ -1,7 +1,6 @@
 package slyvexstratum
 
 import (
-<<<<<<< HEAD
 	"context"
 	"fmt"
 	"time"
@@ -10,13 +9,10 @@ import (
 	"github.com/slyvexnetwork/slyvexd/infrastructure/network/rpcclient"
 	"github.com/onemorebsmith/slyvexstratum/src/gostratum"
 	"github.com/pkg/errors"
-=======
->>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 	"go.uber.org/zap"
 	"github.com/slyvex-core/slyvexd/infrastructure/network/rpcclient"
 )
 
-<<<<<<< HEAD
 type SlyvexApi struct {
 	address       string
 	blockWaitTime time.Duration
@@ -26,19 +22,16 @@ type SlyvexApi struct {
 }
 
 func NewSlyvexAPI(address string, blockWaitTime time.Duration, logger *zap.SugaredLogger) (*SlyvexApi, error) {
-=======
 type KaspaAPI struct {
 	slyvexd *rpcclient.RPCClient
 	logger  *zap.SugaredLogger
 }
 
 func NewKaspaAPI(address string, timeout int, logger *zap.SugaredLogger) (*KaspaAPI, error) {
->>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 	client, err := rpcclient.NewRPCClient(address)
 	if err != nil {
 		return nil, err
 	}
-<<<<<<< HEAD
 
 	return &SlyvexApi{
 		address:       address,
@@ -157,7 +150,5 @@ func (sv *SlyvexApi) GetBlockTemplate(
 		return nil, errors.Wrap(err, "failed fetching new block template from slyvex")
 	}
 	return template, nil
-=======
 	return &KaspaAPI{slyvexd: client, logger: logger}, nil
->>>>>>> d67473e (Fixed build errors and updated imports for Slyvex integration)
 }
